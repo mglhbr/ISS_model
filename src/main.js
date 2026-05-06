@@ -13,6 +13,7 @@ const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: true,
   alpha: false,
+  logarithmicDepthBuffer: true,
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -26,8 +27,8 @@ scene.background = new THREE.Color(0x000005);
 const camera = new THREE.PerspectiveCamera(
   45,
   window.innerWidth / window.innerHeight,
-  0.1,
-  5000,
+  0.25,
+  4000,
 );
 scene.add(camera);
 
@@ -40,16 +41,9 @@ controls.maxDistance = 28;
 controls.rotateSpeed = 0.7;
 controls.zoomSpeed = 0.8;
 
-const keyLight = new THREE.DirectionalLight(0xffffff, 3.4);
-keyLight.position.set(6, 8, 5);
-scene.add(keyLight);
-
-const fillLight = new THREE.DirectionalLight(0x8fb6ff, 1.8);
-fillLight.position.set(-8, 3, -6);
-scene.add(fillLight);
-
-const ambientLight = new THREE.AmbientLight(0x9bbcff, 0.75);
-scene.add(ambientLight);
+const sunLight = new THREE.PointLight(0xfff2dc, 5.8, 0, 0);
+sunLight.position.set(140, 75, -120);
+scene.add(sunLight);
 
 const stars = createStarField();
 scene.add(stars);
@@ -140,6 +134,7 @@ function prepareModel(model) {
 
   model.scale.setScalar(scale);
   model.position.copy(center).multiplyScalar(-scale);
+  stabilizeModelMaterials(model);
 
   const scaledBox = new THREE.Box3().setFromObject(model);
   const sphere = scaledBox.getBoundingSphere(new THREE.Sphere());
@@ -148,6 +143,39 @@ function prepareModel(model) {
   controls.minDistance = modelRadius * 0.65;
   updateDefaultCameraPosition(true);
   orbitAngle = Math.atan2(defaultCameraPosition.z, defaultCameraPosition.x);
+}
+
+function stabilizeModelMaterials(model) {
+  const preparedMaterials = new Set();
+
+  model.traverse((object) => {
+    if (!object.isMesh) {
+      return;
+    }
+
+    object.renderOrder = 0;
+
+    const materials = Array.isArray(object.material)
+      ? object.material
+      : [object.material];
+
+    materials.forEach((material) => {
+      if (!material || preparedMaterials.has(material)) {
+        return;
+      }
+
+      preparedMaterials.add(material);
+      material.depthTest = true;
+      material.depthWrite = true;
+
+      if (material.transparent || material.alphaMap) {
+        material.transparent = false;
+        material.alphaTest = Math.max(material.alphaTest, 0.42);
+      }
+
+      material.needsUpdate = true;
+    });
+  });
 }
 
 function createStarField() {
